@@ -1,0 +1,14 @@
+# Figure 3: flood exposure, coping strategies and psychological distress
+# Data: Sunamganj and Sylhet, 2022 flood survey
+
+# install.packages(c("haven", "dplyr", "ggplot2", "patchwork", "ragg"))
+
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# Keep the data file next to this script, or change the path here
+SAV <- " "
+FAM <- "Times New Roman"
+OUT <- "Figure3_Flood_Exposure_Distress"
