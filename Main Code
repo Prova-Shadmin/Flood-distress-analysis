@@ -1,0 +1,75 @@
+# Flood exposure, coping and psychological distress: analysis only
+# Data: Data_Final.sav (Sunamganj and Sylhet, 2022 flood)
+# Packages: haven, dplyr
+suppressMessages({
+  library(haven); library(dplyr)
+})
+
+setwd("F:/2nd research_Shahoriar sir/Data Analysis")   # change to your folder
+SAV <- "Data_Final.sav"
+
+# ---------- Data ----------
+d   <- read_sav(SAV)
+num <- function(x) suppressWarnings(as.numeric(as.character(x)))
+yn  <- function(x) { x <- as.numeric(x); ifelse(x == 1, 1, ifelse(x == 2, 0, NA)) }
+
+# Distress score: mean of the 11 Section 7 items (1-4), rescaled to 0-100
+items <- as.data.frame(lapply(d[paste0("S7Q", 1:11)], function(x) {
+  x <- as.numeric(x); x[!x %in% 1:4] <- NA; x }))
+dist <- ifelse(rowSums(!is.na(items)) >= 9,
+               (rowMeans(items, na.rm = TRUE) - 1) / 3 * 100, NA)
+
+days <- num(d$S10Q3); days[days > 180] <- NA     # implausible values removed
+
+df <- data.frame(
+  district = factor(as.numeric(d$S2Q8), 1:2, c("Sunamganj", "Sylhet")),
+  dist = dist, days = days, coping_any = yn(d$S16Q9))
+df$bin <- cut(df$days, c(-Inf, 7, 14, 21, 30, Inf),
+              c("1–7", "8–14", "15–21", "22–30", ">30"))
+
+cop <- c(A1 = "Reduced food intake", A2 = "Borrowed money",
+         A3 = "Sent family members elsewhere", A4 = "Did not buy needed clothes",
+         A5 = "Spent savings", A6 = "Sent children to work",
+         A7 = "Stopped children's schooling", A8 = "Sold livestock for cash")
+for (k in names(cop)) {
+  v <- yn(d[[paste0("S16Q10", k)]]); v[df$coping_any %in% 0] <- 0; df[[k]] <- v
+}
+
+# ---------- Analysis A: distress by days under water ----------
+pa_dat <- df %>% filter(!is.na(dist), !is.na(bin)) %>%
+  group_by(district, bin) %>%
+  summarise(n = n(), m = mean(dist), se = sd(dist) / sqrt(n),
+            lo = m - qt(.975, n - 1) * se, hi = m + qt(.975, n - 1) * se,
+            .groups = "drop")
+
+rho <- df %>% filter(!is.na(dist), !is.na(days)) %>% group_by(district) %>%
+  summarise(r = cor.test(dist, days, method = "spearman", exact = FALSE)$estimate,
+            p = cor.test(dist, days, method = "spearman", exact = FALSE)$p.value,
+            n = n(), .groups = "drop")
+
+# ---------- Analysis B: distress by coping strategy ----------
+pb_dat <- bind_rows(lapply(names(cop), function(k) {
+  x <- df[[k]]; ok <- !is.na(x) & !is.na(df$dist)
+  data.frame(strategy = cop[[k]],
+             share = 100 * mean(x[ok]),
+             users = mean(df$dist[ok & x == 1]),
+             non   = mean(df$dist[ok & x == 0]),
+             p     = wilcox.test(df$dist[ok & x == 1], df$dist[ok & x == 0],
+                                 exact = FALSE)$p.value)
+})) %>%
+  mutate(p_holm = p.adjust(p, "holm"),
+         gap = users - non,
+         sig = p_holm < .05,
+         stars = case_when(p_holm < .001 ~ "***", p_holm < .01 ~ "**",
+                           p_holm < .05 ~ "*", TRUE ~ "")) %>%
+  arrange(gap)
+
+# ---------- Results (console only) ----------
+cat("\n=== Panel a: distress by days under water ===\n")
+print(as.data.frame(pa_dat), digits = 3)
+
+cat("\n=== Spearman correlation with days under water ===\n")
+print(as.data.frame(rho), digits = 3)
+
+cat("\n=== Panel b: distress by coping strategy ===\n")
+print(as.data.frame(pb_dat), digits = 3)
